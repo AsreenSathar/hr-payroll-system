@@ -46,7 +46,12 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(process.env.MONGO_URI, {
+    tls: true,
+    tlsAllowInvalidCertificates: false,
+    serverSelectionTimeoutMS: 10000,
+    family: 4, // Force IPv4 — avoids TLS issues on Windows/Node.js
+  })
   .then(() => {
     console.log('MongoDB connected successfully');
     app.listen(PORT, () => {

@@ -12,8 +12,8 @@ const employeeSchema = new mongoose.Schema({
     required: true,
   },
   department: {
-    type: String,
-    trim: true,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Department',
   },
   position: {
     type: String,

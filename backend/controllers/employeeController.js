@@ -1,4 +1,5 @@
 const Employee = require('../models/Employee');
+const Department = require('../models/Department');
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 
@@ -7,7 +8,8 @@ const getEmployees = async (req, res) => {
   try {
     const employees = await Employee.find({ tenantId: req.user.tenantId })
       .populate('userId', 'name email role')
-      .populate('tenantId', 'companyName');
+      .populate('tenantId', 'companyName')
+      .populate('department', 'name description');
     res.json(employees);
   } catch (err) {
     console.error('Get employees error:', err);
@@ -23,7 +25,8 @@ const getEmployeeById = async (req, res) => {
       tenantId: req.user.tenantId,
     })
       .populate('userId', 'name email role')
-      .populate('tenantId', 'companyName');
+      .populate('tenantId', 'companyName')
+      .populate('department', 'name description');
 
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
@@ -38,12 +41,28 @@ const getEmployeeById = async (req, res) => {
 // POST /api/employees
 const createEmployee = async (req, res) => {
   try {
-    const { name, email, password, role, department, position, salary, joiningDate } = req.body;
+    const { name, email, password, role, departmentName, position, salary, joiningDate } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'User with this email already exists' });
+    }
+
+    // Step 1: Find or create the department (case-insensitive)
+    let department = null;
+    if (departmentName && departmentName.trim()) {
+      department = await Department.findOne({
+        name: { $regex: new RegExp(`^${departmentName.trim()}$`, 'i') },
+        tenantId: req.user.tenantId,
+      });
+
+      if (!department) {
+        department = await Department.create({
+          name: departmentName.trim(),
+          tenantId: req.user.tenantId,
+        });
+      }
     }
 
     // Hash password for the new user
@@ -60,20 +79,22 @@ const createEmployee = async (req, res) => {
     });
     await user.save();
 
-    // Create Employee record
+    // Step 2: Create Employee with department ObjectId
     const employee = new Employee({
       userId: user._id,
       tenantId: req.user.tenantId,
-      department: department || '',
+      department: department ? department._id : undefined,
       position: position || '',
       salary: salary || 0,
       joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
     });
     await employee.save();
 
+    // Step 3: Return populated employee
     const populated = await Employee.findById(employee._id)
       .populate('userId', 'name email role')
-      .populate('tenantId', 'companyName');
+      .populate('tenantId', 'companyName')
+      .populate('department', 'name description');
 
     res.status(201).json(populated);
   } catch (err) {
@@ -85,15 +106,35 @@ const createEmployee = async (req, res) => {
 // PUT /api/employees/:id
 const updateEmployee = async (req, res) => {
   try {
-    const { department, position, salary, joiningDate } = req.body;
+    const { departmentName, position, salary, joiningDate } = req.body;
+
+    // Find or create department if a name was provided
+    let departmentId;
+    if (departmentName && departmentName.trim()) {
+      let department = await Department.findOne({
+        name: { $regex: new RegExp(`^${departmentName.trim()}$`, 'i') },
+        tenantId: req.user.tenantId,
+      });
+      if (!department) {
+        department = await Department.create({
+          name: departmentName.trim(),
+          tenantId: req.user.tenantId,
+        });
+      }
+      departmentId = department._id;
+    }
+
+    const updateFields = { position, salary, joiningDate };
+    if (departmentId) updateFields.department = departmentId;
 
     const employee = await Employee.findOneAndUpdate(
       { _id: req.params.id, tenantId: req.user.tenantId },
-      { department, position, salary, joiningDate },
+      updateFields,
       { new: true }
     )
       .populate('userId', 'name email role')
-      .populate('tenantId', 'companyName');
+      .populate('tenantId', 'companyName')
+      .populate('department', 'name description');
 
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });

@@ -70,7 +70,7 @@ const EmployeeCard = ({ employee, onEdit, onDelete }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Department</span>
           <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 500 }}>
-            {employee.department || '—'}
+            {employee.department?.name || employee.department || '—'}
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

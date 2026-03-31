@@ -6,17 +6,22 @@ import api from '../utils/api';
 
 const initialForm = {
   name: '', email: '', password: '', role: 'employee',
-  department: '', position: '', salary: '', joiningDate: '',
+  departmentName: '', position: '', salary: '', joiningDate: '',
 };
 
 const EmployeesPage = () => {
   const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Controls whether user is typing a new department name or picking from dropdown
+  const [addingNewDept, setAddingNewDept] = useState(false);
+
+  // ── Fetchers ──────────────────────────────────────────────────────────────
 
   const fetchEmployees = async () => {
     setLoading(true);
@@ -30,23 +35,40 @@ const EmployeesPage = () => {
     }
   };
 
-  useEffect(() => { fetchEmployees(); }, []);
+  const fetchDepartments = async () => {
+    try {
+      const res = await api.get('/api/departments');
+      setDepartments(res.data);
+    } catch (err) {
+      console.error('Fetch departments error:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchEmployees();
+    fetchDepartments();
+  }, []);
+
+  // ── Modal helpers ──────────────────────────────────────────────────────────
 
   const openAddModal = () => {
     setEditEmployee(null);
     setForm(initialForm);
+    setAddingNewDept(false);
     setError('');
     setShowModal(true);
   };
 
   const openEditModal = (emp) => {
     setEditEmployee(emp);
+    setAddingNewDept(false);
     setForm({
       name: emp.userId?.name || '',
       email: emp.userId?.email || '',
       password: '',
       role: emp.userId?.role || 'employee',
-      department: emp.department || '',
+      // department is now a populated object — pre-fill its name
+      departmentName: emp.department?.name || '',
       position: emp.position || '',
       salary: emp.salary || '',
       joiningDate: emp.joiningDate ? emp.joiningDate.split('T')[0] : '',
@@ -57,6 +79,8 @@ const EmployeesPage = () => {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  // ── Submit ─────────────────────────────────────────────────────────────────
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -64,25 +88,34 @@ const EmployeesPage = () => {
     try {
       if (editEmployee) {
         await api.put(`/api/employees/${editEmployee._id}`, {
-          department: form.department,
+          departmentName: form.departmentName,
           position: form.position,
           salary: Number(form.salary),
           joiningDate: form.joiningDate,
         });
       } else {
         await api.post('/api/employees', {
-          ...form,
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          role: form.role,
+          departmentName: form.departmentName,
+          position: form.position,
           salary: Number(form.salary),
+          joiningDate: form.joiningDate,
         });
       }
       setShowModal(false);
-      fetchEmployees();
+      // Re-fetch both employees AND departments so new dept appears in dropdown
+      await Promise.all([fetchEmployees(), fetchDepartments()]);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save employee');
     } finally {
       setSaving(false);
     }
   };
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this employee? This action cannot be undone.')) return;
@@ -93,6 +126,74 @@ const EmployeesPage = () => {
       alert('Failed to delete employee');
     }
   };
+
+  // ── Department field UI ────────────────────────────────────────────────────
+
+  const renderDepartmentField = () => (
+    <div className="form-group">
+      <label>Department</label>
+      {addingNewDept ? (
+        <>
+          <input
+            name="departmentName"
+            value={form.departmentName}
+            onChange={handleChange}
+            placeholder="Enter new department name"
+            autoFocus
+          />
+          {departments.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setAddingNewDept(false); setForm({ ...form, departmentName: '' }); }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#6366f1',
+                cursor: 'pointer',
+                fontSize: '0.78rem',
+                marginTop: '4px',
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
+              ← Pick existing department
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <select
+            name="departmentName"
+            value={form.departmentName}
+            onChange={handleChange}
+          >
+            <option value="">— Select department —</option>
+            {departments.map((d) => (
+              <option key={d._id} value={d.name}>{d.name}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => { setAddingNewDept(true); setForm({ ...form, departmentName: '' }); }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#6366f1',
+              cursor: 'pointer',
+              fontSize: '0.78rem',
+              marginTop: '4px',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            + Add new department
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="layout">
@@ -142,22 +243,43 @@ const EmployeesPage = () => {
               <h2>{editEmployee ? '✏️ Edit Employee' : '➕ Add New Employee'}</h2>
               {error && <div className="alert alert-error">{error}</div>}
               <form onSubmit={handleSubmit}>
+                {/* New employee fields only */}
                 {!editEmployee && (
                   <>
                     <div className="form-row">
                       <div className="form-group">
                         <label>Full Name</label>
-                        <input name="name" value={form.name} onChange={handleChange} required placeholder="Jane Doe" />
+                        <input
+                          name="name"
+                          value={form.name}
+                          onChange={handleChange}
+                          required
+                          placeholder="Jane Doe"
+                        />
                       </div>
                       <div className="form-group">
                         <label>Email</label>
-                        <input type="email" name="email" value={form.email} onChange={handleChange} required placeholder="jane@company.com" />
+                        <input
+                          type="email"
+                          name="email"
+                          value={form.email}
+                          onChange={handleChange}
+                          required
+                          placeholder="jane@company.com"
+                        />
                       </div>
                     </div>
                     <div className="form-row">
                       <div className="form-group">
                         <label>Password</label>
-                        <input type="password" name="password" value={form.password} onChange={handleChange} required placeholder="••••••••" />
+                        <input
+                          type="password"
+                          name="password"
+                          value={form.password}
+                          onChange={handleChange}
+                          required
+                          placeholder="••••••••"
+                        />
                       </div>
                       <div className="form-group">
                         <label>Role</label>
@@ -170,31 +292,59 @@ const EmployeesPage = () => {
                     </div>
                   </>
                 )}
+
+                {/* Department + Position */}
                 <div className="form-row">
-                  <div className="form-group">
-                    <label>Department</label>
-                    <input name="department" value={form.department} onChange={handleChange} placeholder="Engineering" />
-                  </div>
+                  {renderDepartmentField()}
                   <div className="form-group">
                     <label>Position</label>
-                    <input name="position" value={form.position} onChange={handleChange} placeholder="Software Engineer" />
+                    <input
+                      name="position"
+                      value={form.position}
+                      onChange={handleChange}
+                      placeholder="Software Engineer"
+                    />
                   </div>
                 </div>
+
+                {/* Salary + Joining Date */}
                 <div className="form-row">
                   <div className="form-group">
                     <label>Salary (₹)</label>
-                    <input type="number" name="salary" value={form.salary} onChange={handleChange} placeholder="50000" min="0" />
+                    <input
+                      type="number"
+                      name="salary"
+                      value={form.salary}
+                      onChange={handleChange}
+                      placeholder="50000"
+                      min="0"
+                    />
                   </div>
                   <div className="form-group">
                     <label>Joining Date</label>
-                    <input type="date" name="joiningDate" value={form.joiningDate} onChange={handleChange} />
+                    <input
+                      type="date"
+                      name="joiningDate"
+                      value={form.joiningDate}
+                      onChange={handleChange}
+                    />
                   </div>
                 </div>
+
                 <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                  <button type="submit" className="btn btn-primary" disabled={saving} style={{ flex: 1, justifyContent: 'center' }}>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={saving}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
                     {saving ? 'Saving...' : '💾 Save Employee'}
                   </button>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowModal(false)}
+                  >
                     Cancel
                   </button>
                 </div>

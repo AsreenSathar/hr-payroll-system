@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 
+const GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+
 const RegisterPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -16,18 +18,54 @@ const RegisterPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({ email: '', password: '' });
+
+  const validateEmail = (value) => {
+    const trimmed = value.trim();
+    if (!trimmed) return 'Email is required.';
+    if (!GMAIL_REGEX.test(trimmed))
+      return 'Only Gmail addresses are allowed (example@gmail.com)';
+    return '';
+  };
+
+  const validatePassword = (value) => {
+    if (!value) return 'Password is required.';
+    if (value.length < 8) return 'Password must be at least 8 characters';
+    return '';
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
+    setFieldErrors((prev) => ({ ...prev, [e.target.name]: '' }));
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    if (name === 'email') {
+      setFieldErrors((prev) => ({ ...prev, email: validateEmail(value) }));
+    }
+    if (name === 'password') {
+      setFieldErrors((prev) => ({ ...prev, password: validatePassword(value) }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const emailErr = validateEmail(formData.email);
+    const passErr = validatePassword(formData.password);
+    setFieldErrors({ email: emailErr, password: passErr });
+    if (emailErr || passErr) return;
+
     setLoading(true);
     setError('');
     try {
-      const res = await api.post('/api/auth/register', { ...formData, role: 'admin' });
+      const res = await api.post('/api/auth/register', {
+        ...formData,
+        email: formData.email.trim(),
+        role: 'admin',
+      });
       login(res.data.token, res.data.user);
       navigate('/dashboard');
     } catch (err) {
@@ -35,6 +73,13 @@ const RegisterPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const inlineErrorStyle = {
+    color: '#f87171',
+    fontSize: '0.78rem',
+    marginTop: '4px',
+    display: 'block',
   };
 
   return (
@@ -50,7 +95,8 @@ const RegisterPage = () => {
 
         {error && <div className="alert alert-error">{error}</div>}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
+          {/* Company Details Section */}
           <div
             style={{
               background: 'rgba(99,102,241,0.05)',
@@ -107,6 +153,7 @@ const RegisterPage = () => {
             </div>
           </div>
 
+          {/* Admin Account Section */}
           <div
             style={{
               background: 'rgba(14,165,233,0.05)',
@@ -128,6 +175,7 @@ const RegisterPage = () => {
             >
               Admin Account
             </p>
+
             <div className="form-group">
               <label>Full Name</label>
               <input
@@ -140,30 +188,64 @@ const RegisterPage = () => {
                 required
               />
             </div>
+
+            {/* Email with validation */}
             <div className="form-group">
-              <label>Email Address</label>
+              <label htmlFor="reg-email">Email Address</label>
               <input
                 type="email"
                 name="email"
                 id="reg-email"
-                placeholder="admin@acme.com"
+                placeholder="admin@gmail.com"
                 value={formData.email}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 required
+                autoComplete="email"
               />
+              {fieldErrors.email && (
+                <span style={inlineErrorStyle}>{fieldErrors.email}</span>
+              )}
             </div>
+
+            {/* Password with show/hide toggle */}
             <div className="form-group">
-              <label>Password</label>
-              <input
-                type="password"
-                name="password"
-                id="reg-password"
-                placeholder="Min. 8 characters"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                minLength={6}
-              />
+              <label htmlFor="reg-password">Password</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  id="reg-password"
+                  placeholder="Min. 8 characters"
+                  value={formData.password}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  required
+                  style={{ paddingRight: '42px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    lineHeight: 1,
+                    padding: 0,
+                  }}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? '🙈' : '👁'}
+                </button>
+              </div>
+              {fieldErrors.password && (
+                <span style={inlineErrorStyle}>{fieldErrors.password}</span>
+              )}
             </div>
           </div>
 
